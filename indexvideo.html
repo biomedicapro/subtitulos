@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reproductor de Video con Subtítulos</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Roboto Mono', monospace;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #000;
+            color: white;
+        }
+        #video-container {
+            width: 100%;
+            height: 50%; /* Asegura que el video ocupe la mitad superior */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: black;
+        }
+        video {
+            max-height: 100%;
+            max-width: 100%;
+            object-fit: contain;
+        }
+        #subtitle-container {
+            width: 100%;
+            height: 50%; /* La otra mitad es para los subtítulos */
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Subtítulos en la parte superior */
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            text-align: left;
+            box-sizing: border-box;
+            border-top: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 0 0 10px 10px;
+            box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.5);
+            overflow: hidden; /* Evita desbordamiento */
+        }
+        #subtitle-display {
+            transition: opacity 0.3s ease;
+            line-height: 1.5;
+            word-wrap: break-word;
+            font-size: 24px;
+            max-width: 90%;
+        }
+        #upload-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+        }
+        #upload-container.hidden {
+            display: none;
+        }
+        button {
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #1558b0;
+        }
+    </style>
+</head>
+<body>
+    <div id="upload-container">
+        <h1>Reproductor de Video con Subtítulos</h1>
+        <p>Sube un archivo de video (.mp4) y un archivo de subtítulos (.srt).</p>
+        <input type="file" id="video-upload" accept="video/mp4"><br><br>
+        <input type="file" id="srt-upload" accept=".srt"><br><br>
+        <button onclick="startPlayback()">Reproducir</button>
+    </div>
+    <div id="video-container" class="hidden">
+        <video id="video-player" controls></video>
+    </div>
+    <div id="subtitle-container" class="hidden">
+        <div id="subtitle-display"></div>
+    </div>
+
+    <script>
+        let subtitles = [];
+        const videoElement = document.getElementById('video-player');
+        const subtitleDisplay = document.getElementById('subtitle-display');
+        const videoContainer = document.getElementById('video-container');
+        const subtitleContainer = document.getElementById('subtitle-container');
+        const uploadContainer = document.getElementById('upload-container');
+
+        document.getElementById('video-upload').addEventListener('change', (event) => {
+            const videoFile = event.target.files[0];
+            if (videoFile) {
+                videoElement.src = URL.createObjectURL(videoFile);
+            }
+        });
+
+        document.getElementById('srt-upload').addEventListener('change', (event) => {
+            const srtFile = event.target.files[0];
+            if (srtFile) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    parseSRT(e.target.result);
+                };
+                reader.readAsText(srtFile);
+            }
+        });
+
+        function parseSRT(data) {
+            const srtLines = data.split('\n');
+            subtitles = [];
+            let i = 0;
+
+            while (i < srtLines.length) {
+                const line = srtLines[i].trim();
+
+                if (line.match(/^\d+$/)) { // Número del subtítulo
+                    const times = srtLines[i + 1].split(' --> ');
+                    const start = parseTime(times[0]);
+                    const end = parseTime(times[1]);
+                    let text = '';
+
+                    // Concatenar todas las líneas de texto hasta encontrar una línea vacía
+                    i += 2; // Saltar al texto
+                    while (i < srtLines.length && srtLines[i].trim() !== '') {
+                        text += srtLines[i] + '\n'; // Conservar saltos de línea originales
+                        i++;
+                    }
+                    text = text.trim(); // Eliminar saltos de línea adicionales
+                    subtitles.push({ start, end, text });
+                } else {
+                    i++;
+                }
+            }
+        }
+
+        function parseTime(timeString) {
+            const parts = timeString.split(/[:,]/);
+            return (
+                parseInt(parts[0]) * 3600 +
+                parseInt(parts[1]) * 60 +
+                parseInt(parts[2]) +
+                parseInt(parts[3]) / 1000
+            );
+        }
+
+        function startPlayback() {
+            if (!videoElement.src) {
+                alert('Por favor, sube un video primero.');
+                return;
+            }
+            if (subtitles.length === 0) {
+                alert('Por favor, sube un archivo .srt.');
+                return;
+            }
+            uploadContainer.classList.add('hidden');
+            videoContainer.classList.remove('hidden');
+            subtitleContainer.classList.remove('hidden');
+            videoElement.play();
+            videoElement.ontimeupdate = () => {
+                const currentTime = videoElement.currentTime;
+                const subtitle = subtitles.find(
+                    (sub) => currentTime >= sub.start && currentTime <= sub.end
+                );
+                if (subtitle) {
+                    const lines = subtitle.text.split('\n');
+                    adjustSubtitleSize(lines.length);
+                    subtitleDisplay.innerHTML = subtitle.text.replace(/\n/g, '<br>');
+                    subtitleDisplay.style.opacity = '1';
+                } else {
+                    subtitleDisplay.style.opacity = '0'; // Transición suave
+                }
+            };
+        }
+
+        function adjustSubtitleSize(lineCount) {
+            // Ajusta el tamaño de fuente según la cantidad de líneas
+            if (lineCount <= 2) {
+                subtitleDisplay.style.fontSize = '24px';
+            } else if (lineCount <= 4) {
+                subtitleDisplay.style.fontSize = '20px';
+            } else {
+                subtitleDisplay.style.fontSize = '16px';
+            }
+        }
+    </script>
+</body>
+</html>
